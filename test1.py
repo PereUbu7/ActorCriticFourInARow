@@ -9,47 +9,16 @@ import collections
 from time import time
 
 import os.path
-
-#import sklearn.pipeline
-#import sklearn.preprocessing
-
 from fourInARowWrapper import FourInARowWrapper
 
 if "../" not in sys.path:
   sys.path.append("../")
-#from lib.envs.cliff_walking import CliffWalkingEnv
 from lib import plotting
 
-#from sklearn.kernel_approximation import RBFSampler
 
 matplotlib.style.use('ggplot')
 
 env = FourInARowWrapper(1)
-#env.observation_space.sample()
-
-# Feature Preprocessing: Normalize to zero mean and unit variance
-# We use a few samples from the observation space to do this
-#observation_examples = np.array([env.observation_space.sample() for x in range(10000)])
-#scaler = sklearn.preprocessing.StandardScaler()
-#scaler.fit(observation_examples)
-
-# Used to converte a state to a featurizes represenation.
-# We use RBF kernels with different variances to cover different parts of the space
-#featurizer = sklearn.pipeline.FeatureUnion([
-#        ("rbf1", RBFSampler(gamma=5.0, n_components=100)),
-#        ("rbf2", RBFSampler(gamma=2.0, n_components=100)),
-#        ("rbf3", RBFSampler(gamma=1.0, n_components=100)),
-#        ("rbf4", RBFSampler(gamma=0.5, n_components=100))
-#        ])
-#featurizer.fit(scaler.transform(observation_examples))
-
-# def featurize_state(state):
-#     """
-#     Returns the featurized representation for a state.
-#     """
-#     scaled = scaler.transform([state])
-#     featurized = featurizer.transform(scaled)
-#     return featurized[0]
 
 class ConvolutionalNetwork():
     def __init__(self, batch_size=1, scope="conv_net"):
@@ -115,14 +84,14 @@ class Trainer():
             self.policy = policy
             self.value = value
             self.loss = policyLossFactor * policy.loss + valueLossFactor * value.loss
-            #self.optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate, momentum=0.9)
+
             self.optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
             self.train_op = self.optimizer.minimize(
                 self.loss, global_step=tf.contrib.framework.get_global_step())
 
     def update(self, board, player, td_target, td_error, action, avaliableColumns, sess=None):
         sess = sess or tf.get_default_session()
-        # state = featurize_state(state)
+
 
         feed_dict = {self.policy.board: board, self.policy.player: player, self.policy.target: td_error, self.policy.action: action,
                     self.policy.validColumnsFilter: avaliableColumns, self.value.board: board, self.value.player: player, self.value.target: td_target}
@@ -149,7 +118,7 @@ class PolicyEstimator():
             self.validColumnsFilter = tf.placeholder(dtype=tf.float32, shape=(None, 7), name="validColumnsFilter")
 
             self.input = tf.reshape(self.input, [tf.shape(self.input)[0], 480])
-            #self.player_exp = tf.expand_dims(self.player, axis=0, name="player_exp")
+
             self.player_exp = self.player
             self.board_flat = tf.reshape(self.board, [tf.shape(self.input)[0], 84])
             self.input = tf.concat([self.player_exp, self.input], 1)
@@ -196,47 +165,23 @@ class PolicyEstimator():
             self.dist = tf.contrib.distributions.Categorical(probs=self.mu, dtype=tf.float32)
 
             # Draw sample
-            #self.action = self.normal_dist._sample_n(1)
             self.action = self.dist.sample()
 
-            # Clip sample into allowed action space
-            #self.action = tf.clip_by_value(self.action, env.action_space.low, env.action_space.high-1)
-
             # Loss and train op
-            #self.loss = -self.normal_dist.log_prob(self.action) * self.target
             self.loss = -self.dist.log_prob(self.action) * self.target
 
             # Add cross entropy cost to encourage exploration
-            #self.loss -= 1e-1 * self.normal_dist.entropy()
             self.loss -= entropyFactor * self.dist.entropy()
 
-            #self.optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-            # self.optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate)
-            # self.train_op = self.optimizer.minimize(
-            #     self.loss, global_step=tf.contrib.framework.get_global_step())
 
     def predict(self, env, sess=None):
         sess = sess or tf.get_default_session()
-        #state = featurize_state(state)
 
         player = np.expand_dims(env.state[0], axis=0)
         board = np.expand_dims(env.state[1], axis=0)
 
-        #print("Player:", player, "Board", board)
-
         action, mu = sess.run([self.action, self.mu], {self.player: player, self.board: board, self.validColumnsFilter: np.expand_dims(env.getAvaliableColumns(), axis=0)})
         return action, mu
-
-    # def update(self, state, target, action, avaliableColumns, sess=None):
-    #     sess = sess or tf.get_default_session()
-    #     #state = featurize_state(state)
-    #
-    #     player = state[0]
-    #     board = state[1]
-    #
-    #     feed_dict = {self.board: board, self.player: player, self.target: target, self.action: action, self.validColumnsFilter: avaliableColumns}
-    #     _, loss = sess.run([self.train_op, self.loss], feed_dict)
-    #     return loss
 
 
 class ValueEstimator():
@@ -253,12 +198,11 @@ class ValueEstimator():
                 print("Needs shared_layers parameter")
                 return -1
 
-            #self.board = tf.placeholder(tf.float32, [7,6,2], "board")
             self.player = tf.placeholder(tf.float32, (None, 2), "player")
             self.target = tf.placeholder(dtype=tf.float32, shape=(None, 1), name="target")
 
             self.input = tf.reshape(self.input, [tf.shape(self.input)[0], 480])
-            #self.player_exp = tf.expand_dims(self.player, 0)
+
             self.player_exp = self.player
             self.board_flat = tf.reshape(self.board, [tf.shape(self.input)[0], 84])
             self.input = tf.concat([self.player_exp, self.input], 1)
@@ -301,10 +245,6 @@ class ValueEstimator():
             self.value_estimate = tf.squeeze(self.output_layer)
             self.loss = tf.squared_difference(self.value_estimate, self.target)
 
-            #self.optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-            # self.optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate)
-            # self.train_op = self.optimizer.minimize(
-            #     self.loss, global_step=tf.contrib.framework.get_global_step())
 
     def predict(self, state, sess=None):
         sess = sess or tf.get_default_session()
@@ -312,17 +252,6 @@ class ValueEstimator():
         board = np.expand_dims(state[1], axis=0)
         #state = featurize_state(state)
         return sess.run(self.value_estimate, {self.board: board, self.player: player})
-
-    # def update(self, state, target, sess=None):
-    #     sess = sess or tf.get_default_session()
-    #
-    #     player = state[0]
-    #     board = state[1]
-    #
-    #     #state = featurize_state(state)
-    #     feed_dict = {self.board: board, self.player: player, self.target: target}
-    #     _, loss = sess.run([self.train_op, self.loss], feed_dict)
-    #     return loss
 
 
 def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, discount_factor=1.0, player2=True, positiveRewardFactor=1.0, negativeRewardFactor=1.0, batch_size=1):
@@ -372,23 +301,12 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
         # Reset the environment and pick the first action
         state = env.reset(i_episode % 2 + 1)
 
-        #player = state[0]
-        #board = state[1]
-
         episode = []
 
-        #player1_state = None
-        #player1_action = None
-
-        #player2_state = None
-        #player2_action = None
         probas = None
         last_turn = False
         done = False
-        #state_tmp = None
         last_state = None
-        #action_tmp = None
-        #reward_tmp = None
         action = None
         reward = None
 
@@ -402,7 +320,6 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
 
         # One step in the environment
         for t in itertools.count():
-            #print("------------------------------------------New loop----------------------------")
             # Save avaliable columns
             if not done:
                 avaliableColumns = env.getAvaliableColumns()
@@ -410,15 +327,12 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
             currentPlayerBeforeStep = env.getCurrentPlayer()
 
             action_tmp = action
-            #reward_tmp = reward
 
             # Take a step
             if currentPlayerBeforeStep == 1 or currentPlayerBeforeStep == 2 and player2 and not done:
                 action, probas = estimator_policy.predict(env)
                 action = action[0]
                 probas = probas[0]
-                # if currentPlayerBeforeStep == 2:
-                #     action = int(np.random.randint(0, 7))
             elif not done:
                 try:
                     action = int(input("Give a column number: ")) - 1
@@ -430,15 +344,9 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
             if not done:
                 next_state, reward, step_done, _ = env.step(action)
 
-                #next_player = next_state[0]
-                #next_board = next_state[1]
-
-
 
                 if step_done:
                     pass
-                    #print("step_done")
-                    #print("Player", currentPlayerBeforeStep, "won!!!!")
 
                 if t > 0:
                     state_tmp = last_state
@@ -451,7 +359,6 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
 
 
             elif done and not last_turn:
-                #print("done and not last turn")
                 state_tmp = episode[-2].state
                 reward_tmp = reward*positiveRewardFactor
             else:
@@ -469,12 +376,6 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
                     player = "X"
                 elif episode[-1].state[0][1] == 1:
                     player = "O"
-                # print("player", player, "is playing\nReward:", episode[-1].reward, "\nAction:", episode[-1].action + 1)
-                # print("State")
-                # env.renderHotEncodedState(episode[-1].state)
-                # print("Next State")
-                # env.renderHotEncodedState(episode[-1].next_state)
-
                 # Update statistics
                 stats.episode_rewards[i_episode] += episode[-1].reward
                 stats.episode_lengths[i_episode] = t
@@ -490,12 +391,6 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
 
                 stats.episode_td_error[i_episode] += td_error
 
-                # Update the value estimator
-                #value_loss = estimator_value.update(episode[-1].state, td_target)
-
-                # Update the policy estimator
-                # using the td error as our advantage estimate
-                #policy_loss = estimator_policy.update(episode[-1].state, td_error, episode[-1].action, avaliableColumns)
 
                 batch_board[batch_pos] = episode[-1].state[1]
                 batch_player[batch_pos] = episode[-1].state[0]
@@ -538,12 +433,6 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
 
             last_probas = probas
 
-            #if last_turn:
-
-            #    break
-
-
-
             if done:
                 #print("--------------------------------Game ended!!")
                 last_turn = True
@@ -578,8 +467,7 @@ with tf.Session() as sess:
     except ValueError:
         sess.run(tf.initialize_all_variables())
         print("Initializing parameters")
-    # Note, due to randomness in the policy the number of episodes you need varies
-    # TODO: Sometimes the algorithm gets stuck, I'm not sure what exactly is happening there.
+
     stats = actor_critic(env, policy_estimator, value_estimator, trainer, 20000, discount_factor=0.99, player2=True, positiveRewardFactor=1, negativeRewardFactor=1, batch_size=batch_size)
 
     filters = sess.run(conv_net.filter1)
