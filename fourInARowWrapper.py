@@ -200,17 +200,16 @@ class FourInARowWrapper(gym.Env):
                 row += "---|"
             print(row)
 
-        #print("\n")
+    def invertBoard(self, inBoard):
+        invertedBoard = np.array(inBoard)
 
+        board_shape = inBoard.shape
 
-# env = FourInARowWrapper(1)
-#
-# env.render()
-#
-# while fourInARow.state == "Playing":
-#     key = input()
-#     env.step(int(key)-1)
-#     env.render()
-#     print(env.getAvaliableColumns(), env.getAvaliableColumns().shape, env.getAvaliableColumns().dtype)
-#
-# print(fourInARow.state)
+        #print("Shape:", board_shape)
+
+        for x in range(board_shape[0]):
+            for y in range(board_shape[1]):
+                invertedBoard[x][y][0] = inBoard[x][y][1]
+                invertedBoard[x][y][1] = inBoard[x][y][0]
+
+        return invertedBoard
