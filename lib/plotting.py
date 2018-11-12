@@ -154,3 +154,34 @@ def plot_episode_stats(stats, filters, smoothing_window=10, noshow=False):
         plt.show(fig5)
 
     return fig1, fig2, fig3
+
+def plotNNFilter(board, layer1, layer2):
+    from math import ceil
+    filter1 = np.shape(layer1)[0]
+    filter2 = np.shape(layer2)[0]
+
+    board_img = np.concatenate((board, np.zeros((7,6,1))), axis=2)
+    fig1 = plt.figure(1, figsize=(10, 5))
+    #n_columns = 6
+    #n_rows = ceil(filters / n_columns) + 1
+    # for i in range(filters):
+    #     plt.subplot(n_rows, n_columns, i + 1)
+    #     plt.title('Filter ' + str(i))
+    #     plt.imshow(units[0, :, :, i], interpolation="nearest", cmap="gray")
+    image1 = np.concatenate((layer1[0], np.zeros((7,6,1))), axis=2)
+    image2 = np.concatenate((layer2[0], np.zeros((7,6,1))), axis=2)
+    image1 = image1/np.max(image1)
+    image2 = image2/np.max(image2)
+
+    plt.subplot(2, 2, 2)
+    plt.title('Layer1')
+    plt.imshow(image1)
+
+    plt.subplot(2, 2, 3)
+    plt.title('Layer2')
+    plt.imshow(image2)
+
+    plt.subplot(2, 2, 1)
+    plt.title('board')
+    plt.imshow(board_img)
+    plt.show(fig1)

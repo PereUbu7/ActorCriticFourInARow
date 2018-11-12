@@ -20,11 +20,25 @@ matplotlib.style.use('ggplot')
 
 env = FourInARowWrapper(1)
 
+def invertBoard(inBoard):
+    invertedBoard = np.array(inBoard)
+
+    board_shape = inBoard.shape
+
+    #print("Shape:", board_shape)
+
+    for x in range(board_shape[0]):
+        for y in range(board_shape[1]):
+            invertedBoard[x][y][0] = inBoard[x][y][1]
+            invertedBoard[x][y][1] = inBoard[x][y][0]
+
+    return invertedBoard
+
 class ConvolutionalNetwork():
     def __init__(self, scope="conv_net"):
         with tf.variable_scope(scope):
             self.board = tf.placeholder(tf.float32, (None, 7, 6, 2), "board")
-            self.player = tf.placeholder(tf.float32, (None, 2), "player")
+            #self.player = tf.placeholder(tf.float32, (None, 2), "player")
 
             self.filter1 = tf.Variable(tf.random_normal([3, 3, 2, 20]), name="filter1")
             self.filter2 = tf.Variable(tf.random_normal([2, 2, 20, 40]), name="filter2")
@@ -37,6 +51,8 @@ class ConvolutionalNetwork():
                 strides=(1, 1, 1, 1),
                 padding="SAME"
             )
+
+            self.deconv1 = tf.nn.conv2d_transpose(self.conv1, self.filter1, tf.shape(self.board_norm), strides=(1, 1, 1, 1), padding="SAME", data_format="NHWC", name="deconv1")
 
             self.l1 = tf.nn.leaky_relu(self.conv1, 0.1)
 
@@ -53,24 +69,31 @@ class ConvolutionalNetwork():
                 input=self.l1,
                 filter=self.filter2,
                 strides=(1, 1, 1, 1),
-                padding="VALID"
+                padding="SAME"
             )
 
-
+            self.deconv2 = tf.nn.conv2d_transpose(self.conv2, self.filter2, tf.shape(self.l1), strides=(1, 1, 1, 1), padding="SAME",
+                                                  data_format="NHWC", name="deconv2")
+            self.deconv2_1 = tf.nn.conv2d_transpose(self.deconv2, self.filter1, tf.shape(self.board_norm), strides=(1, 1, 1, 1), padding="SAME", data_format="NHWC", name="deconv2_1")
 
             self.outLayerConv = tf.nn.leaky_relu(self.conv2, 0.1)
 
             self.board_flat = tf.reshape(self.board_norm, [tf.shape(self.board_norm)[0], 84])
-            self.outLayerConv_flat = tf.reshape(self.outLayerConv, [tf.shape(self.outLayerConv)[0], 1200])
+            self.outLayerConv_flat = tf.reshape(self.outLayerConv, [tf.shape(self.outLayerConv)[0], 1680])
 
             self.board_and_out = tf.concat([self.board_flat, self.outLayerConv_flat], 1)
 
-            self.outLayer = tf.contrib.layers.fully_connected(
+            self.outLayer_pre = tf.contrib.layers.fully_connected(
                 inputs=self.board_and_out,
-                num_outputs=200,
+                num_outputs=500,
                 activation_fn=tf.nn.sigmoid,
                 weights_initializer=tf.random_normal_initializer(mean=0.0, stddev=1),
                 scope="outLayer"
+            )
+
+            self.outLayer = tf.contrib.layers.dropout(
+                self.outLayer_pre,
+                keep_prob=0.5,
             )
 
 
@@ -96,6 +119,16 @@ class Trainer():
         _, loss = sess.run([self.train_op, self.loss], feed_dict)
         return loss
 
+    def evalFilters(self, board, sess=None):
+        sess = sess or tf.get_default_session()
+
+        board_exp = np.expand_dims(board, axis=0)
+
+        feed_dict = {self.convNet.board: board_exp}
+        layer1, layer2 = sess.run([self.convNet.deconv1, self.convNet.deconv2_1], feed_dict)
+
+        return layer1, layer2
+
 
 class PolicyEstimator():
     """
@@ -108,7 +141,7 @@ class PolicyEstimator():
             if shared_layers is not None:
                 self.board = shared_layers.board
                 self.input = shared_layers.outLayer
-                self.player = shared_layers.player
+                #self.player = shared_layers.player
             else:
                 print("Needs shared_layers parameter")
                 return -1
@@ -132,7 +165,7 @@ class PolicyEstimator():
             self.mu = tf.contrib.layers.fully_connected(
                 inputs=self.l1_dropout,
                 num_outputs=env.action_space.high-env.action_space.low,
-                activation_fn=None,
+                activation_fn=tf.nn.sigmoid,
                 weights_initializer=tf.random_normal_initializer(mean=0.0, stddev=1),
                 scope="mu")
 
@@ -140,7 +173,7 @@ class PolicyEstimator():
 
             self.mu = tf.multiply(self.mu, self.validColumnsFilter) + 1e-6
 
-            self.mu = tf.nn.softmax(self.mu)
+            self.mu = tf.divide(self.mu, tf.reduce_sum(self.mu))
 
             self.dist = tf.contrib.distributions.Categorical(probs=self.mu, dtype=tf.float32)
 
@@ -158,9 +191,13 @@ class PolicyEstimator():
         sess = sess or tf.get_default_session()
 
         player = np.expand_dims(env.state[0], axis=0)
-        board = np.expand_dims(env.state[1], axis=0)
 
-        action, mu = sess.run([self.action, self.mu], {self.shared_layers.player: player, self.shared_layers.board: board, self.validColumnsFilter: np.expand_dims(env.getAvaliableColumns(), axis=0)})
+        if player[0][0] == 1:
+            board = np.expand_dims(env.state[1], axis=0)
+        else:
+            board = np.expand_dims(invertBoard(env.state[1]), axis=0)
+
+        action, mu = sess.run([self.action, self.mu], {self.shared_layers.board: board, self.validColumnsFilter: np.expand_dims(env.getAvaliableColumns(), axis=0)})
         return action, mu
 
 
@@ -210,9 +247,13 @@ class ValueEstimator():
     def predict(self, state, sess=None):
         sess = sess or tf.get_default_session()
         player = np.expand_dims(state[0], axis=0)
-        board = np.expand_dims(state[1], axis=0)
+
+        if player[0][0] == 1:
+            board = np.expand_dims(state[1], axis=0)
+        else:
+            board = np.expand_dims(invertBoard(state[1]), axis=0)
         #state = featurize_state(state)
-        return sess.run(self.value_estimate, {self.shared_layers.board: board, self.shared_layers.player: player})
+        return sess.run(self.value_estimate, {self.shared_layers.board: board})
 
 
 def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, discount_factor=1.0, player2=True, positiveRewardFactor=1.0, negativeRewardFactor=1.0, batch_size=1):
@@ -305,6 +346,11 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
             if not done:
                 next_state, reward, step_done, _ = env.step(action)
 
+                if game % 1000 == 0:
+                    layer1, layer2 = trainer.evalFilters(next_state[1])
+                    plotting.plotNNFilter(next_state[1], layer1, layer2)
+                    #plotting.plotNNFilter(layer2)
+
 
                 if step_done:
                     pass
@@ -342,7 +388,7 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
                 stats.episode_lengths[i_episode] = t
 
                 # Calculate TD Target
-                value_next = estimator_value.predict(episode[-1].next_state)
+                value_next = estimator_value.predict(episode[-1].next_state, )
 
                 td_target = episode[-1].reward + discount_factor * value_next
 
@@ -354,10 +400,10 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
 
                 batch_player[batch_pos] = episode[-1].state[0]
                 # Network always plays as player one
-                if batch_player[batch_pos] == (1, 0):
+                if batch_player[batch_pos][0] == 1:
                     batch_board[batch_pos] = episode[-1].state[1]
                 else:
-                    batch_board[batch_pos] = env.invertBoard(episode[-1].state[1])
+                    batch_board[batch_pos] = invertBoard(episode[-1].state[1])
 
                 batch_td_target[batch_pos] = td_target
                 batch_td_error[batch_pos] = td_error
@@ -418,9 +464,9 @@ batch_size = 500
 
 global_step = tf.Variable(0, name="global_step", trainable=False)
 conv_net = ConvolutionalNetwork()
-policy_estimator = PolicyEstimator(entropyFactor=1e-1, shared_layers=conv_net)
+policy_estimator = PolicyEstimator(entropyFactor=1e-0, shared_layers=conv_net)
 value_estimator = ValueEstimator(shared_layers=conv_net)
-trainer = Trainer(learning_rate=1e-3, convNet=conv_net, policy=policy_estimator, policyLossFactor=1, value=value_estimator, valueLossFactor=1e-3)
+trainer = Trainer(learning_rate=1e-3, convNet=conv_net, policy=policy_estimator, policyLossFactor=1, value=value_estimator, valueLossFactor=1e-0)
 
 variables = tf.contrib.slim.get_variables_to_restore()
 variables_to_restore = [v for v in variables if v.name.split('/')[0]!='trainer' and v.name.split('/')[0]!='policy_estimator' and v.name.split('/')[0]!='value_estimator']
@@ -433,7 +479,7 @@ saver = tf.train.Saver(variables_to_restore)
 
 with tf.Session() as sess:
     try:
-        saver.restore(sess, "tmp/model4.ckpt")
+        saver.restore(sess, "tmp/model5.ckpt")
         sess.run(tf.initializers.variables(variables_to_init))
         print("Restoring parameters")
     except ValueError:
@@ -444,7 +490,7 @@ with tf.Session() as sess:
 
     filters = sess.run(conv_net.filter1)
 
-    save_path = saver.save(sess, "tmp/model4.ckpt")
+    save_path = saver.save(sess, "tmp/model5.ckpt")
     print("Saving parameters")
 
 end = time()

@@ -200,16 +200,16 @@ class FourInARowWrapper(gym.Env):
                 row += "---|"
             print(row)
 
-    def invertBoard(self, inBoard):
-        invertedBoard = np.array(inBoard)
+def invertBoard(inBoard):
+    invertedBoard = np.array(inBoard)
 
-        board_shape = inBoard.shape
+    board_shape = inBoard.shape
 
-        #print("Shape:", board_shape)
+    #print("Shape:", board_shape)
 
-        for x in range(board_shape[0]):
-            for y in range(board_shape[1]):
-                invertedBoard[x][y][0] = inBoard[x][y][1]
-                invertedBoard[x][y][1] = inBoard[x][y][0]
+    for x in range(board_shape[0]):
+        for y in range(board_shape[1]):
+            invertedBoard[x][y][0] = inBoard[x][y][1]
+            invertedBoard[x][y][1] = inBoard[x][y][0]
 
-        return invertedBoard
+    return invertedBoard
