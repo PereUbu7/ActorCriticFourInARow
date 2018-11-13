@@ -40,8 +40,8 @@ class ConvolutionalNetwork():
             self.board = tf.placeholder(tf.float32, (None, 7, 6, 2), "board")
             #self.player = tf.placeholder(tf.float32, (None, 2), "player")
 
-            self.filter1 = tf.Variable(tf.random_normal([3, 3, 2, 20]), name="filter1")
-            self.filter2 = tf.Variable(tf.random_normal([2, 2, 20, 40]), name="filter2")
+            self.filter1 = tf.Variable(tf.random_normal([3, 3, 2, 10]), name="filter1")
+            self.filter2 = tf.Variable(tf.random_normal([2, 2, 10, 20]), name="filter2")
 
             self.board_norm = tf.nn.batch_normalization(x=self.board, mean=0, variance=1, offset=1, scale=1, variance_epsilon=1e-7)
 
@@ -79,7 +79,7 @@ class ConvolutionalNetwork():
             self.outLayerConv = tf.nn.leaky_relu(self.conv2, 0.1)
 
             self.board_flat = tf.reshape(self.board_norm, [tf.shape(self.board_norm)[0], 84])
-            self.outLayerConv_flat = tf.reshape(self.outLayerConv, [tf.shape(self.outLayerConv)[0], 1680])
+            self.outLayerConv_flat = tf.reshape(self.outLayerConv, [tf.shape(self.outLayerConv)[0], 840])
 
             self.board_and_out = tf.concat([self.board_flat, self.outLayerConv_flat], 1)
 
@@ -159,7 +159,7 @@ class PolicyEstimator():
 
             self.l1_dropout = tf.contrib.layers.dropout(
                 self.l1,
-                keep_prob=0.9,
+                keep_prob=0.7,
             )
 
             self.mu = tf.contrib.layers.fully_connected(
@@ -229,7 +229,7 @@ class ValueEstimator():
 
             self.l1_dropout = tf.contrib.layers.dropout(
                 self.l1,
-                keep_prob=0.9,
+                keep_prob=0.7,
             )
 
             # This is just linear classifier
@@ -312,10 +312,10 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
         action = None
         reward = None
 
-        if game % 5000 == 10:
-            player2 = True
-        elif game % 5000 == 0:
-            player2 = False
+        # if game % 5000 == 10:
+        #     player2 = True
+        # elif game % 5000 == 0:
+        #     player2 = False
 
         if game == num_episodes-3:
             player2 = False
@@ -346,10 +346,9 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
             if not done:
                 next_state, reward, step_done, _ = env.step(action)
 
-                if game % 1000 == 0:
+                if game == num_episodes-3:
                     layer1, layer2 = trainer.evalFilters(next_state[1])
                     plotting.plotNNFilter(next_state[1], layer1, layer2)
-                    #plotting.plotNNFilter(layer2)
 
 
                 if step_done:
@@ -464,9 +463,9 @@ batch_size = 500
 
 global_step = tf.Variable(0, name="global_step", trainable=False)
 conv_net = ConvolutionalNetwork()
-policy_estimator = PolicyEstimator(entropyFactor=1e-0, shared_layers=conv_net)
+policy_estimator = PolicyEstimator(entropyFactor=1e-1, shared_layers=conv_net)
 value_estimator = ValueEstimator(shared_layers=conv_net)
-trainer = Trainer(learning_rate=1e-3, convNet=conv_net, policy=policy_estimator, policyLossFactor=1, value=value_estimator, valueLossFactor=1e-0)
+trainer = Trainer(learning_rate=1e-3, convNet=conv_net, policy=policy_estimator, policyLossFactor=1, value=value_estimator, valueLossFactor=1e-3)
 
 variables = tf.contrib.slim.get_variables_to_restore()
 variables_to_restore = [v for v in variables if v.name.split('/')[0]!='trainer' and v.name.split('/')[0]!='policy_estimator' and v.name.split('/')[0]!='value_estimator']
@@ -475,22 +474,22 @@ variables_to_init = [v for v in variables if v.name.split('/')[0]!='conv_net']
 for v in variables_to_restore:
     print(v)
 
-saver = tf.train.Saver(variables_to_restore)
+saver = tf.train.Saver(variables)
 
 with tf.Session() as sess:
     try:
-        saver.restore(sess, "tmp/model5.ckpt")
+        saver.restore(sess, "tmp/model7.ckpt")
         sess.run(tf.initializers.variables(variables_to_init))
         print("Restoring parameters")
     except ValueError:
         sess.run(tf.initializers.global_variables())
         print("Initializing parameters")
 
-    stats = actor_critic(env, policy_estimator, value_estimator, trainer, 10000, discount_factor=0.99, player2=True, positiveRewardFactor=1, negativeRewardFactor=1.2, batch_size=batch_size)
+    stats = actor_critic(env, policy_estimator, value_estimator, trainer, 50000, discount_factor=0.99, player2=True, positiveRewardFactor=1, negativeRewardFactor=1, batch_size=batch_size)
 
     filters = sess.run(conv_net.filter1)
 
-    save_path = saver.save(sess, "tmp/model5.ckpt")
+    save_path = saver.save(sess, "tmp/model7.ckpt")
     print("Saving parameters")
 
 end = time()

@@ -159,8 +159,10 @@ class FourInARowWrapper(gym.Env):
         return fourInARow.player
 
     def renderHotEncodedState(self, hotEncodedState):
-        hotEncodedPlayer = hotEncodedState[0:2:1]
-        hotEncodedBoard = hotEncodedState[2::1]
+        hotEncodedPlayer = hotEncodedState[0]
+        hotEncodedBoard = hotEncodedState[1]
+
+        print(hotEncodedPlayer)
 
         if hotEncodedPlayer[0] == 1:
             player = "X"
@@ -186,9 +188,9 @@ class FourInARowWrapper(gym.Env):
                 color = 30# + hotEncodedBoard[2*x + (fourInARow.height-2*y)*fourInARow.width-1]
                 character = "   "
 
-                if hotEncodedBoard[2*((x+1)*fourInARow.height - 1 - y)] == 1:
+                if hotEncodedBoard[x][fourInARow.height-y-1][0] == 1:
                     character = " X "
-                elif hotEncodedBoard[2*((x+1)*fourInARow.height - 1 - y) + 1] == 1:
+                elif hotEncodedBoard[x][fourInARow.height-y-1][1] == 1:
                     character = " O "
 
                 row += self.ansi(color) + character + self.ansi(0) + "|"
