@@ -93,7 +93,7 @@ def plot_episode_stats(stats, filters, smoothing_window=10, noshow=False):
 
     l = np.zeros((totalWidth, 0, 2))
     colorPadding = np.zeros((totalWidth,totalHeight,1))
-    xPadding = np.ones((1,width,2))
+    xPadding = np.ones((1,height,2))
     yPadding = np.ones((totalWidth,1,2))
     for y in range(mapHeight):
         lx1 = filters[(np.s_[:],) * 3 + (y*mapWidth,)]
@@ -168,20 +168,21 @@ def plotNNFilter(board, layer1, layer2):
     #     plt.subplot(n_rows, n_columns, i + 1)
     #     plt.title('Filter ' + str(i))
     #     plt.imshow(units[0, :, :, i], interpolation="nearest", cmap="gray")
-    image1 = np.concatenate((layer1[0], np.zeros((7,6,1))), axis=2)
-    image2 = np.concatenate((layer2[0], np.zeros((7,6,1))), axis=2)
-    image1 = image1/np.max(image1)
-    image2 = image2/np.max(image2)
+    for i in range(np.shape(layer1)[0]):
+        image1 = np.concatenate((layer1[i][0], np.zeros((7,6,1))), axis=2)
+        image1 = image1 / np.max(image1)
+        plt.subplot(5, 5, i+1)
+        plt.title('Layer1')
+        plt.imshow(image1)
 
-    plt.subplot(2, 2, 2)
-    plt.title('Layer1')
-    plt.imshow(image1)
+    # for i in range(np.shape(layer2)[0]):
+    #     image2 = np.concatenate((layer2[i][0], np.zeros((7,6,1))), axis=2)
+    #     image2 = image2/np.max(image2)
+    #     plt.subplot(15, 15, 15+i)
+    #     plt.title('Layer2')
+    #     plt.imshow(image2)
 
-    plt.subplot(2, 2, 3)
-    plt.title('Layer2')
-    plt.imshow(image2)
-
-    plt.subplot(2, 2, 1)
+    plt.subplot(5, 5, 25)
     plt.title('board')
     plt.imshow(board_img)
     plt.show(fig1)

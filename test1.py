@@ -40,8 +40,8 @@ class ConvolutionalNetwork():
             self.board = tf.placeholder(tf.float32, (None, 7, 6, 2), "board")
             #self.player = tf.placeholder(tf.float32, (None, 2), "player")
 
-            self.filter1 = tf.Variable(tf.random_normal([3, 3, 2, 10]), name="filter1")
-            self.filter2 = tf.Variable(tf.random_normal([2, 2, 10, 20]), name="filter2")
+            self.filter1 = tf.Variable(tf.random_normal([4, 6, 2, 20]), name="filter1")
+            self.filter2 = tf.Variable(tf.random_normal([2, 1, 20, 80]), name="filter2")
 
             self.board_norm = tf.nn.batch_normalization(x=self.board, mean=0, variance=1, offset=1, scale=1, variance_epsilon=1e-7)
 
@@ -49,37 +49,49 @@ class ConvolutionalNetwork():
                 input=self.board_norm,
                 filter=self.filter1,
                 strides=(1, 1, 1, 1),
-                padding="SAME"
+                padding="VALID"
             )
 
-            self.deconv1 = tf.nn.conv2d_transpose(self.conv1, self.filter1, tf.shape(self.board_norm), strides=(1, 1, 1, 1), padding="SAME", data_format="NHWC", name="deconv1")
+            self.deconv1 = []
+
+            for i in range(10):
+                self.deconv1.append(tf.nn.conv2d_transpose(tf.slice(self.conv1, [0,0,0,i], [-1,-1,-1,1], "slice1"),
+                                                           tf.slice(self.filter1, [0,0,0,i], [-1,-1,-1,1], "slice2"),
+                                                           tf.shape(self.board_norm),
+                                                           strides=(1, 1, 1, 1),
+                                                           padding="VALID",
+                                                           data_format="NHWC",
+                                                           name="deconv1"))
 
             self.l1 = tf.nn.leaky_relu(self.conv1, 0.1)
 
-            # self.l1p = tf.layers.max_pooling2d(
-            #     inputs = self.l1,
-            #     pool_size = (3, 3),
-            #     strides = (2, 2),
-            #     padding = "VALID",
-            #     data_format='channels_last',
-            #     name="maxPooling"
-            # )
 
             self.conv2 = tf.nn.conv2d(
                 input=self.l1,
                 filter=self.filter2,
                 strides=(1, 1, 1, 1),
-                padding="SAME"
+                padding="VALID"
             )
 
-            self.deconv2 = tf.nn.conv2d_transpose(self.conv2, self.filter2, tf.shape(self.l1), strides=(1, 1, 1, 1), padding="SAME",
-                                                  data_format="NHWC", name="deconv2")
-            self.deconv2_1 = tf.nn.conv2d_transpose(self.deconv2, self.filter1, tf.shape(self.board_norm), strides=(1, 1, 1, 1), padding="SAME", data_format="NHWC", name="deconv2_1")
+            self.deconv2_1 = []
+            for i in range(10):
+                for j in range(20):
+                    self.deconv2 = tf.nn.conv2d_transpose(tf.slice(self.conv2, [0,0,0,j], [-1,-1,-1,1]),
+                                                          tf.slice(self.filter2, [0,0,0,j], [-1,-1,-1,1]), tf.shape(self.l1),
+                                                          strides=(1, 1, 1, 1), padding="VALID",
+                                                          data_format="NHWC", name="deconv2")
+                    self.deconv2_1.append(tf.nn.conv2d_transpose(tf.slice(self.deconv2, [0,0,0,i], [-1,-1,-1,1], "slice1"),
+                                                                 tf.slice(self.filter1, [0,0,0,i], [-1,-1,-1,1], "slice2"),
+                                                                 tf.shape(self.board_norm),
+                                                                 strides=(1, 1, 1, 1),
+                                                                 padding="VALID",
+                                                                 data_format="NHWC",
+                                                                 name="deconv1"))
 
             self.outLayerConv = tf.nn.leaky_relu(self.conv2, 0.1)
 
             self.board_flat = tf.reshape(self.board_norm, [tf.shape(self.board_norm)[0], 84])
-            self.outLayerConv_flat = tf.reshape(self.outLayerConv, [tf.shape(self.outLayerConv)[0], 840])
+            self.outLayerConv_flat = tf.reshape(self.outLayerConv, [tf.shape(self.outLayerConv)[0], 240])
 
             self.board_and_out = tf.concat([self.board_flat, self.outLayerConv_flat], 1)
 
@@ -98,7 +110,7 @@ class ConvolutionalNetwork():
 
 
 class Trainer():
-    def __init__(self, learning_rate=0.001, convNet=None, policy=None, policyLossFactor=0.1, value=None, valueLossFactor=0.1, scope="trainer"):
+    def __init__(self, scope="trainer", learning_rate=0.001, convNet=None, policy=None, policyLossFactor=0.1, value=None, valueLossFactor=0.1):
         with tf.variable_scope(scope):
             self.policy = policy
             self.value = value
@@ -135,7 +147,7 @@ class PolicyEstimator():
     Policy Function approximator.
     """
 
-    def __init__(self, entropyFactor=0.1, shared_layers=None, scope="policy_estimator"):
+    def __init__(self, scope="policy_estimator", entropyFactor=0.1, shared_layers=None):
         with tf.variable_scope(scope):
             self.shared_layers = shared_layers
             if shared_layers is not None:
@@ -206,7 +218,7 @@ class ValueEstimator():
     Value Function approximator.
     """
 
-    def __init__(self, shared_layers=None, scope="value_estimator"):
+    def __init__(self, scope="value_estimator", shared_layers=None):
         with tf.variable_scope(scope):
             self.shared_layers = shared_layers
             if shared_layers is not None:
@@ -256,16 +268,16 @@ class ValueEstimator():
         return sess.run(self.value_estimate, {self.shared_layers.board: board})
 
 
-def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, discount_factor=1.0, player2=True, positiveRewardFactor=1.0, negativeRewardFactor=1.0, batch_size=1):
+def actor_critic(env, estimator_policy_X, estimator_value_X, trainer_X, num_episodes, discount_factor=1.0, player2=True, positiveRewardFactor=1.0, negativeRewardFactor=1.0, batch_size=1):
     """
     Actor Critic Algorithm. Optimizes the policy
     function approximator using policy gradient.
 
     Args:
         env: OpenAI environment.
-        estimator_policy: Policy Function to be optimized
-        estimator_value: Value function approximator, used as a critic
-        trainer: our training class
+        estimator_policy_X: Policy Function to be optimized
+        estimator_value_X: Value function approximator, used as a critic
+        trainer_X: our training class
         num_episodes: Number of episodes to run for
         discount_factor: Time-discount factor
         player2: True if computer plays player2, False if user does
@@ -288,14 +300,15 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
 
     Transition = collections.namedtuple("Transition", ["state", "action", "reward", "next_state", "done"])
 
-    batch_board = np.zeros((batch_size, 7, 6, 2))
-    batch_player = np.zeros((batch_size, 2))
-    batch_td_target = np.zeros((batch_size, 1))
-    batch_td_error =np.zeros((batch_size, 1))
-    batch_action =np.zeros((batch_size, 1))
-    batch_avaliableColumns = np.zeros((batch_size, 7))
+    batch_board_X = np.zeros((batch_size, 7, 6, 2))
+    batch_player_X = np.zeros((batch_size, 2))
+    batch_td_target_X = np.zeros((batch_size, 1))
+    batch_td_error_X =np.zeros((batch_size, 1))
+    batch_action_X =np.zeros((batch_size, 1))
+    batch_avaliableColumns_X = np.zeros((batch_size, 7))
 
-    batch_pos = 0
+
+    batch_pos_X = 0
 
     game = 1
 
@@ -331,8 +344,8 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
             action_tmp = action
 
             # Take a step
-            if currentPlayerBeforeStep == 1 or currentPlayerBeforeStep == 2 and player2 and not done:
-                action, probas = estimator_policy.predict(env)
+            if currentPlayerBeforeStep == 1 and not done or currentPlayerBeforeStep == 2 and player2 and not done:
+                action, probas = estimator_policy_X.predict(env)
                 action = action[0]
                 probas = probas[0]
             elif not done:
@@ -343,12 +356,16 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
                     action = 0
                 probas = None
 
-            if not done:
+            if currentPlayerBeforeStep == 2 and player2 and not done:
+                next_state, reward, step_done, action = env.robotStep()
+            elif not done:
                 next_state, reward, step_done, _ = env.step(action)
 
+            if not done:
+
                 if game == num_episodes-3:
-                    layer1, layer2 = trainer.evalFilters(next_state[1])
-                    plotting.plotNNFilter(next_state[1], layer1, layer2)
+                    layer1, layer2 = trainer_X.evalFilters(next_state[1])
+                    #plotting.plotNNFilter(next_state[1], layer1, layer2)
 
 
                 if step_done:
@@ -383,45 +400,64 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
                 elif episode[-1].state[0][1] == 1:
                     player = "O"
                 # Update statistics
-                stats.episode_rewards[i_episode] += episode[-1].reward
                 stats.episode_lengths[i_episode] = t
 
-                # Calculate TD Target
-                value_next = estimator_value.predict(episode[-1].next_state, )
+                # If player 0 (X)
+                if episode[-1].state[0][0] == 1 or True:
 
-                td_target = episode[-1].reward + discount_factor * value_next
+                    if episode[-1].state[0][0] == 1:
+                        stats.episode_rewards[i_episode] += episode[-1].reward
+                    # Calculate TD Target
+                    value_next = estimator_value_X.predict(episode[-1].next_state, )
+                    td_target = episode[-1].reward + discount_factor * value_next
+                    td_error = td_target - estimator_value_X.predict(episode[-1].state)
 
+                    if episode[-1].state[0][0] == 1:
+                        batch_board_X[batch_pos_X] = episode[-1].state[1]
+                    else:
+                        batch_board_X[batch_pos_X] = invertBoard(episode[-1].state[1])
+                    batch_player_X[batch_pos_X] = episode[-1].state[0]
+                    batch_td_target_X[batch_pos_X] = td_target
+                    batch_td_error_X[batch_pos_X] = td_error
+                    batch_action_X[batch_pos_X] = episode[-1].action
+                    batch_avaliableColumns_X[batch_pos_X] = avaliableColumns
 
-                td_error = td_target - estimator_value.predict(episode[-1].state)
+                    batch_pos_X += 1
+                # else:
+                #     value_next = estimator_value_O.predict(episode[-1].next_state, )
+                #     td_target = episode[-1].reward + discount_factor * value_next
+                #     td_error = td_target - estimator_value_O.predict(episode[-1].state)
+                #
+                #     batch_player_O[batch_pos_O] = episode[-1].state[0]
+                #     batch_board_O[batch_pos_O] = episode[-1].state[1]
+                #     batch_td_target_O[batch_pos_O] = td_target
+                #     batch_td_error_O[batch_pos_O] = td_error
+                #     batch_action_O[batch_pos_O] = episode[-1].action
+                #     batch_avaliableColumns_O[batch_pos_O] = avaliableColumns
+                #
+                #     batch_pos_O += 1
 
 
                 stats.episode_td_error[i_episode] += td_error
 
-                batch_player[batch_pos] = episode[-1].state[0]
-                # Network always plays as player one
-                if batch_player[batch_pos][0] == 1:
-                    batch_board[batch_pos] = episode[-1].state[1]
-                else:
-                    batch_board[batch_pos] = invertBoard(episode[-1].state[1])
-
-                batch_td_target[batch_pos] = td_target
-                batch_td_error[batch_pos] = td_error
-                batch_action[batch_pos] = episode[-1].action
-                batch_avaliableColumns[batch_pos] = avaliableColumns
-
-                batch_pos += 1
-
-                if batch_pos == batch_size:
+                if batch_pos_X == batch_size:
                     # Update both networks
-                    loss = trainer.update(batch_board, batch_td_target, batch_td_error, batch_action, batch_avaliableColumns)
-                    loss = loss[0][0]
-                    batch_pos = 0
+                    loss_X = trainer_X.update(batch_board_X, batch_td_target_X, batch_td_error_X, batch_action_X, batch_avaliableColumns_X)
+                    loss_X = loss_X[0][0]
+                    batch_pos_X = 0
 
-                    print("Updates network. Loss:", loss)
+                    print("Updates X network. Loss:", loss_X)
+                    stats.episode_value_loss[i_episode] += loss_X
 
-
-
-                    stats.episode_value_loss[i_episode] += loss
+                # if batch_pos_O == batch_size:
+                #     # Update both networks
+                #     loss_O = trainer_O.update(batch_board_O, batch_td_target_O, batch_td_error_O, batch_action_O,
+                #                               batch_avaliableColumns_O)
+                #     loss_O = loss_O[0][0]
+                #     batch_pos_O = 0
+                #
+                #     print("Updates X network. Loss:", loss_O)
+                #     stats.episode_value_loss[i_episode] += loss_O
 
                     if probas is not None and last_probas is not None:
                         kl_div = 0
@@ -430,15 +466,16 @@ def actor_critic(env, estimator_policy, estimator_value, trainer, num_episodes, 
                         stats.episode_kl_divergence[i_episode] += kl_div
 
                 # Print out which step we're on, useful for debugging.
-                print("Player {}: Action {}, Reward {}, TD Error {}, at Step {} @ Game {} @ Episode {}/{} ({})\n".format(
-                        player , episode[-1].action+1, episode[-1].reward, td_error, t, game, i_episode + 1, num_episodes, stats.episode_rewards[i_episode - 1]), end="")
+                if player == "X" and episode[-1].reward == 1 or i_episode % 100 == 0:
+                    print("Player {}: Action {}, Reward {:<4}, TD Error {:<20}, at Step {:<5} @ Game {} @ Episode {}/{} ({})\n".format(
+                            player, int(episode[-1].action+1), episode[-1].reward, td_error, t, game, i_episode + 1, num_episodes, stats.episode_rewards[i_episode - 1]), end="")
 
             if game == num_episodes or env.getCurrentPlayer() == 2 and not player2:
                 env.render()
                 if probas is not None:
                     out = " "
                     for i in range(probas.size):
-                        out += "%.1f " % probas[i]
+                        out += "%03d " % int(probas[i]*100+0.5)
                     print(out)
 
             last_probas = probas
@@ -462,10 +499,10 @@ start = time()
 batch_size = 500
 
 global_step = tf.Variable(0, name="global_step", trainable=False)
-conv_net = ConvolutionalNetwork()
-policy_estimator = PolicyEstimator(entropyFactor=1e-1, shared_layers=conv_net)
-value_estimator = ValueEstimator(shared_layers=conv_net)
-trainer = Trainer(learning_rate=1e-3, convNet=conv_net, policy=policy_estimator, policyLossFactor=1, value=value_estimator, valueLossFactor=1e-3)
+conv_net_X = ConvolutionalNetwork("X_convNet")
+policy_estimator_X = PolicyEstimator("X_policy", entropyFactor=1e-3, shared_layers=conv_net_X)
+value_estimator_X = ValueEstimator("X_value", shared_layers=conv_net_X)
+trainer_X = Trainer("X_trainer", learning_rate=1e-3, convNet=conv_net_X, policy=policy_estimator_X, policyLossFactor=1, value=value_estimator_X, valueLossFactor=1e-3)
 
 variables = tf.contrib.slim.get_variables_to_restore()
 variables_to_restore = [v for v in variables if v.name.split('/')[0]!='trainer' and v.name.split('/')[0]!='policy_estimator' and v.name.split('/')[0]!='value_estimator']
@@ -478,18 +515,18 @@ saver = tf.train.Saver(variables)
 
 with tf.Session() as sess:
     try:
-        saver.restore(sess, "tmp/model7.ckpt")
+        saver.restore(sess, "tmp/model9.ckpt")
         sess.run(tf.initializers.variables(variables_to_init))
         print("Restoring parameters")
     except ValueError:
         sess.run(tf.initializers.global_variables())
         print("Initializing parameters")
 
-    stats = actor_critic(env, policy_estimator, value_estimator, trainer, 50000, discount_factor=0.99, player2=True, positiveRewardFactor=1, negativeRewardFactor=1, batch_size=batch_size)
+    stats = actor_critic(env, policy_estimator_X, value_estimator_X, trainer_X, 500, discount_factor=0.99, player2=True, positiveRewardFactor=1, negativeRewardFactor=1, batch_size=batch_size)
 
-    filters = sess.run(conv_net.filter1)
+    filters = sess.run(conv_net_X.filter1)
 
-    save_path = saver.save(sess, "tmp/model7.ckpt")
+    save_path = saver.save(sess, "tmp/model9.ckpt")
     print("Saving parameters")
 
 end = time()
