@@ -115,6 +115,8 @@ class Trainer():
             self.policy = policy
             self.value = value
             self.convNet = convNet
+            self.policyLoss = policy.loss
+            self.valueLoss = value.loss
             self.loss = policyLossFactor * policy.loss + valueLossFactor * value.loss
 
             self.optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
@@ -128,8 +130,8 @@ class Trainer():
         feed_dict = {self.policy.target: td_error, self.policy.action: action,
                     self.policy.validColumnsFilter: avaliableColumns,
                      self.value.target: td_target, self.convNet.board: board}
-        _, loss = sess.run([self.train_op, self.loss], feed_dict)
-        return loss
+        _, loss, pol_loss, value_loss = sess.run([self.train_op, self.loss, self.policyLoss, self.valueLoss], feed_dict)
+        return loss, pol_loss, value_loss
 
     def evalFilters(self, board, sess=None):
         sess = sess or tf.get_default_session()
@@ -382,7 +384,7 @@ def actor_critic(env, estimator_policy_X, estimator_value_X, trainer_X, num_epis
 
 
             elif done and not last_turn:
-                state_tmp = episode[-2].state
+                state_tmp = episode[-2].next_state
                 reward_tmp = reward*positiveRewardFactor
             else:
                 break
@@ -408,7 +410,7 @@ def actor_critic(env, estimator_policy_X, estimator_value_X, trainer_X, num_epis
                     if episode[-1].state[0][0] == 1:
                         stats.episode_rewards[i_episode] += episode[-1].reward
                     # Calculate TD Target
-                    value_next = estimator_value_X.predict(episode[-1].next_state, )
+                    value_next = estimator_value_X.predict(episode[-1].next_state)
                     td_target = episode[-1].reward + discount_factor * value_next
                     td_error = td_target - estimator_value_X.predict(episode[-1].state)
 
@@ -442,12 +444,14 @@ def actor_critic(env, estimator_policy_X, estimator_value_X, trainer_X, num_epis
 
                 if batch_pos_X == batch_size:
                     # Update both networks
-                    loss_X = trainer_X.update(batch_board_X, batch_td_target_X, batch_td_error_X, batch_action_X, batch_avaliableColumns_X)
+                    loss_X, policyLoss, valueLoss = trainer_X.update(batch_board_X, batch_td_target_X, batch_td_error_X, batch_action_X, batch_avaliableColumns_X)
                     loss_X = loss_X[0][0]
+                    policyLoss = policyLoss[0][0]
+                    valueLoss = valueLoss[0][0]
                     batch_pos_X = 0
 
                     print("Updates X network. Loss:", loss_X)
-                    stats.episode_value_loss[i_episode] += loss_X
+                    stats.episode_value_loss[i_episode] += valueLoss
 
                 # if batch_pos_O == batch_size:
                 #     # Update both networks
@@ -466,9 +470,15 @@ def actor_critic(env, estimator_policy_X, estimator_value_X, trainer_X, num_epis
                         stats.episode_kl_divergence[i_episode] += kl_div
 
                 # Print out which step we're on, useful for debugging.
-                if player == "X" and episode[-1].reward == 1 or i_episode % 100 == 0:
-                    print("Player {}: Action {}, Reward {:<4}, TD Error {:<20}, at Step {:<5} @ Game {} @ Episode {}/{} ({})\n".format(
-                            player, int(episode[-1].action+1), episode[-1].reward, td_error, t, game, i_episode + 1, num_episodes, stats.episode_rewards[i_episode - 1]), end="")
+                print(
+                    "\rPlayer {}: Action {}, Reward {:<4}, TD Error {:<20}, TD Target {:<20}, Value Next {:<20}, at Step {:<5} @ Game {} @ Episode {}/{} ({})".format(
+                        player, int(episode[-1].action + 1), episode[-1].reward, td_error, td_target, value_next, t,
+                        game, i_episode + 1, num_episodes, stats.episode_rewards[i_episode - 1]), end="")
+
+                if player == "X" and episode[-1].reward > 0:# or i_episode % 100 == 0:
+                    for i in range(t):
+                        print("Player:", batch_player_X[batch_pos_X-t+i], "Action:", int(batch_action_X[batch_pos_X-t+i])+1 )
+                    env.renderHotEncodedState( ((1, 0), batch_board_X[batch_pos_X-1]) )
 
             if game == num_episodes or env.getCurrentPlayer() == 2 and not player2:
                 env.render()
@@ -500,9 +510,9 @@ batch_size = 500
 
 global_step = tf.Variable(0, name="global_step", trainable=False)
 conv_net_X = ConvolutionalNetwork("X_convNet")
-policy_estimator_X = PolicyEstimator("X_policy", entropyFactor=1e-3, shared_layers=conv_net_X)
+policy_estimator_X = PolicyEstimator("X_policy", entropyFactor=1e-5, shared_layers=conv_net_X)
 value_estimator_X = ValueEstimator("X_value", shared_layers=conv_net_X)
-trainer_X = Trainer("X_trainer", learning_rate=1e-3, convNet=conv_net_X, policy=policy_estimator_X, policyLossFactor=1, value=value_estimator_X, valueLossFactor=1e-3)
+trainer_X = Trainer("X_trainer", learning_rate=1e-3, convNet=conv_net_X, policy=policy_estimator_X, policyLossFactor=1, value=value_estimator_X, valueLossFactor=1e-1)
 
 variables = tf.contrib.slim.get_variables_to_restore()
 variables_to_restore = [v for v in variables if v.name.split('/')[0]!='trainer' and v.name.split('/')[0]!='policy_estimator' and v.name.split('/')[0]!='value_estimator']
@@ -522,7 +532,7 @@ with tf.Session() as sess:
         sess.run(tf.initializers.global_variables())
         print("Initializing parameters")
 
-    stats = actor_critic(env, policy_estimator_X, value_estimator_X, trainer_X, 500, discount_factor=0.99, player2=True, positiveRewardFactor=1, negativeRewardFactor=1, batch_size=batch_size)
+    stats = actor_critic(env, policy_estimator_X, value_estimator_X, trainer_X, 10000, discount_factor=0.99, player2=True, positiveRewardFactor=1, negativeRewardFactor=1, batch_size=batch_size)
 
     filters = sess.run(conv_net_X.filter1)
 
@@ -533,5 +543,5 @@ end = time()
 
 print("It took:", end-start, "seconds to do 5.000 games")
 
-plotting.plot_episode_stats(stats, filters, smoothing_window=10)
+plotting.plot_episode_stats(stats, filters, smoothing_window=100)
 
