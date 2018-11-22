@@ -54,16 +54,21 @@ class FourInARowWrapper(gym.Env):
 
         return (stateOneHotEncoded, reward, done, None)
 
-    def robotStep(self):
-        action = self.getRobotAction()
+    def robotStep(self, level):
+        action = self.getRobotAction(level)
         #print("Robot action:", action+1)
         stateOneHotEncoded, reward, done, _ = self.step(action)
         return (stateOneHotEncoded, reward, done, action)
 
-    def getRobotAction(self):
+    def getRobotAction(self, level):
         import random
 
         rules = [self.ruleIsWinHyper(1), self.ruleIsLoseHyper(1), self.ruleIsWinHyper(2), self.ruleIsLoseHyper(2)]
+        if level > len(rules):
+            print("Error! Level can't be bigger than", len(rules))
+            raise Exception
+
+        rules = rules[:level]
         col_points = [0 for _ in range(fourInARow.width)]
         candidates = list(range(fourInARow.width))
         # for col in columns:
@@ -86,8 +91,8 @@ class FourInARowWrapper(gym.Env):
                     new_candidates.append(column)
             candidates = new_candidates
 
-            # if max_points != min_points:
-            #     break
+            if len(candidates) == 1:
+                break
 
         candidates = [i for i in range(len(col_points)) if col_points[i] == max_points]
         ret_col = random.choice(candidates)
@@ -437,6 +442,7 @@ def invertBoard(inBoard):
             invertedBoard[x][y][1] = inBoard[x][y][0]
 
     return invertedBoard
+#
 # env = FourInARowWrapper(1)
 #
 # ruleIsLoseInOne = env.ruleIsLoseHyper(1)
@@ -444,16 +450,20 @@ def invertBoard(inBoard):
 #
 # while fourInARow.state == "Playing":
 #
-#     env.robotStep()
+#     env.robotStep(4)
 #     env.render()
 #
 #     key = input()
 #     env.step(int(key) - 1)
 
+# env.step(0)
 # env.step(3)
-# env.step(4)
 #
-# env.step(3)
+# env.step(0)
+# env.step(5)
+#
+# env.step(0)
+# env.step(4)
 #
 # env.robotStep()
 #

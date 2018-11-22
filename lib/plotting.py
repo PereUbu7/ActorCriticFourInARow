@@ -69,7 +69,7 @@ def plot_value_function(V, title="Value Function"):
 
 
 
-def plot_episode_stats(stats, filters, smoothing_window=10, noshow=False):
+def plot_episode_stats(stats, smoothing_window=10, noshow=False):
     # Plot the episode length over time
     fig1 = plt.figure(figsize=(10,5))
     plt.plot(stats.episode_lengths)
@@ -82,31 +82,31 @@ def plot_episode_stats(stats, filters, smoothing_window=10, noshow=False):
         plt.show(fig1)
 
     # Plot filters
-    fig6 = plt.figure(figsize=(10,5))
-
-    width, height, channels, nOfFilters = filters.shape
-
-    mapWidth = 4
-    mapHeight = int(nOfFilters/4)
-    totalHeight = height*mapHeight+mapHeight
-    totalWidth = width*mapWidth+mapWidth
-
-    l = np.zeros((totalWidth, 0, 2))
-    colorPadding = np.zeros((totalWidth,totalHeight,1))
-    xPadding = np.ones((1,height,2))
-    yPadding = np.ones((totalWidth,1,2))
-    for y in range(mapHeight):
-        lx1 = filters[(np.s_[:],) * 3 + (y*mapWidth,)]
-        lx1 = np.concatenate((lx1, xPadding), axis=0)
-        for x in range(mapWidth-1):
-            lx1 = np.concatenate((lx1, filters[(np.s_[:],) * 3 + (x+1+y*mapWidth,)]), axis=0)
-            lx1 = np.concatenate((lx1, xPadding), axis=0)
-        l = np.concatenate((l, lx1), axis=1)
-        l = np.concatenate((l, yPadding), axis=1)
-    l = np.concatenate((l, colorPadding), axis=2)
-    plt.imshow(l, interpolation='nearest')
-    plt.title("Convolutional layer 1 filters")
-    plt.show(fig6)
+    # fig6 = plt.figure(figsize=(10,5))
+    #
+    # width, height, channels, nOfFilters = filters.shape
+    #
+    # mapWidth = 4
+    # mapHeight = int(nOfFilters/4)
+    # totalHeight = height*mapHeight+mapHeight
+    # totalWidth = width*mapWidth+mapWidth
+    #
+    # l = np.zeros((totalWidth, 0, 2))
+    # colorPadding = np.zeros((totalWidth,totalHeight,1))
+    # xPadding = np.ones((1,height,2))
+    # yPadding = np.ones((totalWidth,1,2))
+    # for y in range(mapHeight):
+    #     lx1 = filters[(np.s_[:],) * 3 + (y*mapWidth,)]
+    #     lx1 = np.concatenate((lx1, xPadding), axis=0)
+    #     for x in range(mapWidth-1):
+    #         lx1 = np.concatenate((lx1, filters[(np.s_[:],) * 3 + (x+1+y*mapWidth,)]), axis=0)
+    #         lx1 = np.concatenate((lx1, xPadding), axis=0)
+    #     l = np.concatenate((l, lx1), axis=1)
+    #     l = np.concatenate((l, yPadding), axis=1)
+    # l = np.concatenate((l, colorPadding), axis=2)
+    # plt.imshow(l, interpolation='nearest')
+    # plt.title("Convolutional layer 1 filters")
+    # plt.show(fig6)
 
     # Plot the episode reward over time
     fig2 = plt.figure(figsize=(10,5))

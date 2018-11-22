@@ -40,72 +40,85 @@ class ConvolutionalNetwork():
             self.board = tf.placeholder(tf.float32, (None, 7, 6, 2), "board")
             #self.player = tf.placeholder(tf.float32, (None, 2), "player")
 
-            self.filter1 = tf.Variable(tf.random_normal([4, 6, 2, 20]), name="filter1")
-            self.filter2 = tf.Variable(tf.random_normal([2, 1, 20, 80]), name="filter2")
+            # self.filter1 = tf.Variable(tf.random_normal([4, 6, 2, 20]), name="filter1")
+            # self.filter2 = tf.Variable(tf.random_normal([2, 1, 20, 80]), name="filter2")
 
             self.board_norm = tf.nn.batch_normalization(x=self.board, mean=0, variance=1, offset=1, scale=1, variance_epsilon=1e-7)
+            self.board_flat = tf.reshape(self.board_norm, (-1, 7*6*2))
 
-            self.conv1 = tf.nn.conv2d(
-                input=self.board_norm,
-                filter=self.filter1,
-                strides=(1, 1, 1, 1),
-                padding="VALID"
+            # self.conv1 = tf.nn.conv2d(
+            #     input=self.board_norm,
+            #     filter=self.filter1,
+            #     strides=(1, 1, 1, 1),
+            #     padding="VALID"
+            # )
+            #
+            # self.deconv1 = []
+            #
+            # for i in range(10):
+            #     self.deconv1.append(tf.nn.conv2d_transpose(tf.slice(self.conv1, [0,0,0,i], [-1,-1,-1,1], "slice1"),
+            #                                                tf.slice(self.filter1, [0,0,0,i], [-1,-1,-1,1], "slice2"),
+            #                                                tf.shape(self.board_norm),
+            #                                                strides=(1, 1, 1, 1),
+            #                                                padding="VALID",
+            #                                                data_format="NHWC",
+            #                                                name="deconv1"))
+            #
+            # self.l1 = tf.nn.leaky_relu(self.conv1, 0.1)
+            #
+            #
+            # self.conv2 = tf.nn.conv2d(
+            #     input=self.l1,
+            #     filter=self.filter2,
+            #     strides=(1, 1, 1, 1),
+            #     padding="VALID"
+            # )
+            #
+            # self.deconv2_1 = []
+            # for i in range(10):
+            #     for j in range(20):
+            #         self.deconv2 = tf.nn.conv2d_transpose(tf.slice(self.conv2, [0,0,0,j], [-1,-1,-1,1]),
+            #                                               tf.slice(self.filter2, [0,0,0,j], [-1,-1,-1,1]), tf.shape(self.l1),
+            #                                               strides=(1, 1, 1, 1), padding="VALID",
+            #                                               data_format="NHWC", name="deconv2")
+            #         self.deconv2_1.append(tf.nn.conv2d_transpose(tf.slice(self.deconv2, [0,0,0,i], [-1,-1,-1,1], "slice1"),
+            #                                                      tf.slice(self.filter1, [0,0,0,i], [-1,-1,-1,1], "slice2"),
+            #                                                      tf.shape(self.board_norm),
+            #                                                      strides=(1, 1, 1, 1),
+            #                                                      padding="VALID",
+            #                                                      data_format="NHWC",
+            #                                                      name="deconv1"))
+            #
+            # self.outLayerConv = tf.nn.leaky_relu(self.conv2, 0.1)
+            #
+            # self.board_flat = tf.reshape(self.board_norm, [tf.shape(self.board_norm)[0], 84])
+            # self.outLayerConv_flat = tf.reshape(self.outLayerConv, [tf.shape(self.outLayerConv)[0], 240])
+            #
+            # self.board_and_out = tf.concat([self.board_flat, self.outLayerConv_flat], 1)
+
+            self.board_and_out = tf.contrib.layers.fully_connected(
+                inputs=self.board_flat,
+                num_outputs=800,
+                activation_fn=None,
+                weights_initializer=tf.random_normal_initializer(mean=0.0, stddev=1),
+                scope="layer_1"
             )
 
-            self.deconv1 = []
-
-            for i in range(10):
-                self.deconv1.append(tf.nn.conv2d_transpose(tf.slice(self.conv1, [0,0,0,i], [-1,-1,-1,1], "slice1"),
-                                                           tf.slice(self.filter1, [0,0,0,i], [-1,-1,-1,1], "slice2"),
-                                                           tf.shape(self.board_norm),
-                                                           strides=(1, 1, 1, 1),
-                                                           padding="VALID",
-                                                           data_format="NHWC",
-                                                           name="deconv1"))
-
-            self.l1 = tf.nn.leaky_relu(self.conv1, 0.1)
-
-
-            self.conv2 = tf.nn.conv2d(
-                input=self.l1,
-                filter=self.filter2,
-                strides=(1, 1, 1, 1),
-                padding="VALID"
-            )
-
-            self.deconv2_1 = []
-            for i in range(10):
-                for j in range(20):
-                    self.deconv2 = tf.nn.conv2d_transpose(tf.slice(self.conv2, [0,0,0,j], [-1,-1,-1,1]),
-                                                          tf.slice(self.filter2, [0,0,0,j], [-1,-1,-1,1]), tf.shape(self.l1),
-                                                          strides=(1, 1, 1, 1), padding="VALID",
-                                                          data_format="NHWC", name="deconv2")
-                    self.deconv2_1.append(tf.nn.conv2d_transpose(tf.slice(self.deconv2, [0,0,0,i], [-1,-1,-1,1], "slice1"),
-                                                                 tf.slice(self.filter1, [0,0,0,i], [-1,-1,-1,1], "slice2"),
-                                                                 tf.shape(self.board_norm),
-                                                                 strides=(1, 1, 1, 1),
-                                                                 padding="VALID",
-                                                                 data_format="NHWC",
-                                                                 name="deconv1"))
-
-            self.outLayerConv = tf.nn.leaky_relu(self.conv2, 0.1)
-
-            self.board_flat = tf.reshape(self.board_norm, [tf.shape(self.board_norm)[0], 84])
-            self.outLayerConv_flat = tf.reshape(self.outLayerConv, [tf.shape(self.outLayerConv)[0], 240])
-
-            self.board_and_out = tf.concat([self.board_flat, self.outLayerConv_flat], 1)
+            self.board_and_out_relu = tf.nn.leaky_relu(features=self.board_and_out, alpha=0.1)
 
             self.outLayer_pre = tf.contrib.layers.fully_connected(
-                inputs=self.board_and_out,
+                inputs=self.board_and_out_relu,
                 num_outputs=500,
-                activation_fn=tf.nn.sigmoid,
+                activation_fn=None,
                 weights_initializer=tf.random_normal_initializer(mean=0.0, stddev=1),
                 scope="outLayer"
             )
 
+            self.outLayer_pre_relu = tf.nn.leaky_relu(features=self.outLayer_pre, alpha=0.1)
+
             self.outLayer = tf.contrib.layers.dropout(
-                self.outLayer_pre,
-                keep_prob=0.5,
+                self.outLayer_pre_relu,
+                keep_prob=0.9,
             )
 
 
@@ -120,7 +133,7 @@ class Trainer():
             self.loss = policyLossFactor * policy.loss + valueLossFactor * value.loss
 
             self.optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-            #self.optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate)
+            self.optimizerRMSProp = tf.train.RMSPropOptimizer(learning_rate=learning_rate)
             self.train_op = self.optimizer.minimize(
                 self.loss, global_step=tf.contrib.framework.get_global_step())
 
@@ -166,18 +179,20 @@ class PolicyEstimator():
             self.l1 = tf.contrib.layers.fully_connected(
                 inputs=self.input,
                 num_outputs=100,
-                activation_fn=tf.nn.sigmoid,
+                activation_fn=None,
                 weights_initializer=tf.random_normal_initializer(mean=0.0, stddev=1),
                 scope="l2"
             )
 
-            self.l1_dropout = tf.contrib.layers.dropout(
-                self.l1,
-                keep_prob=0.7,
-            )
+            self.l1 = tf.nn.leaky_relu(features=self.l1, alpha=0.1)
+
+            # self.l1_dropout = tf.contrib.layers.dropout(
+            #     self.l1,
+            #     keep_prob=0.9,
+            # )
 
             self.mu = tf.contrib.layers.fully_connected(
-                inputs=self.l1_dropout,
+                inputs=self.l1,
                 num_outputs=env.action_space.high-env.action_space.low,
                 activation_fn=tf.nn.sigmoid,
                 weights_initializer=tf.random_normal_initializer(mean=0.0, stddev=1),
@@ -236,19 +251,21 @@ class ValueEstimator():
             self.l1 = tf.contrib.layers.fully_connected(
                 inputs=self.input,
                 num_outputs=100,
-                activation_fn=tf.nn.sigmoid,
+                activation_fn=None,
                 weights_initializer=tf.random_normal_initializer(mean=0.0, stddev=1),
                 scope="l2"
             )
 
-            self.l1_dropout = tf.contrib.layers.dropout(
-                self.l1,
-                keep_prob=0.7,
-            )
+            self.l1 = tf.nn.leaky_relu(features=self.l1, alpha=0.1)
+
+            # self.l1_dropout = tf.contrib.layers.dropout(
+            #     self.l1,
+            #     keep_prob=0.7,
+            # )
 
             # This is just linear classifier
             self.output_layer = tf.contrib.layers.fully_connected(
-                inputs=self.l1_dropout,
+                inputs=self.l1,
                 num_outputs=1,
                 activation_fn=None,
                 weights_initializer=tf.random_normal_initializer(mean=0.0, stddev=1),
@@ -317,6 +334,7 @@ def actor_critic(env, estimator_policy_X, estimator_value_X, trainer_X, num_epis
     for i_episode in range(num_episodes):
         # Reset the environment and pick the first action
         state = env.reset(i_episode % 2 + 1)
+        robotLevel = i_episode%4 + 1
 
         episode = []
 
@@ -359,14 +377,15 @@ def actor_critic(env, estimator_policy_X, estimator_value_X, trainer_X, num_epis
                 probas = None
 
             if currentPlayerBeforeStep == 2 and player2 and not done:
-                next_state, reward, step_done, action = env.robotStep()
+                next_state, reward, step_done, action = env.robotStep(robotLevel)
             elif not done:
                 next_state, reward, step_done, _ = env.step(action)
 
             if not done:
 
                 if game == num_episodes-3:
-                    layer1, layer2 = trainer_X.evalFilters(next_state[1])
+                    pass
+                    #layer1, layer2 = trainer_X.evalFilters(next_state[1])
                     #plotting.plotNNFilter(next_state[1], layer1, layer2)
 
 
@@ -475,9 +494,10 @@ def actor_critic(env, estimator_policy_X, estimator_value_X, trainer_X, num_epis
                         player, int(episode[-1].action + 1), episode[-1].reward, td_error, td_target, value_next, t,
                         game, i_episode + 1, num_episodes, stats.episode_rewards[i_episode - 1]), end="")
 
-                if player == "X" and episode[-1].reward > 0:# or i_episode % 100 == 0:
+                if player == "X" and episode[-1].reward > 0 and robotLevel > 1:# or i_episode % 100 == 0:
                     for i in range(t):
                         print("Player:", batch_player_X[batch_pos_X-t+i], "Action:", int(batch_action_X[batch_pos_X-t+i])+1 )
+                    print("Robot level:", robotLevel)
                     env.renderHotEncodedState( ((1, 0), batch_board_X[batch_pos_X-1]) )
 
             if game == num_episodes or env.getCurrentPlayer() == 2 and not player2:
@@ -506,13 +526,13 @@ tf.reset_default_graph()
 
 start = time()
 
-batch_size = 500
+batch_size = 2000
 
 global_step = tf.Variable(0, name="global_step", trainable=False)
 conv_net_X = ConvolutionalNetwork("X_convNet")
 policy_estimator_X = PolicyEstimator("X_policy", entropyFactor=1e-5, shared_layers=conv_net_X)
 value_estimator_X = ValueEstimator("X_value", shared_layers=conv_net_X)
-trainer_X = Trainer("X_trainer", learning_rate=1e-3, convNet=conv_net_X, policy=policy_estimator_X, policyLossFactor=1, value=value_estimator_X, valueLossFactor=1e-1)
+trainer_X = Trainer("X_trainer", learning_rate=1e-3, convNet=conv_net_X, policy=policy_estimator_X, policyLossFactor=1, value=value_estimator_X, valueLossFactor=1e-2)
 
 variables = tf.contrib.slim.get_variables_to_restore()
 variables_to_restore = [v for v in variables if v.name.split('/')[0]!='trainer' and v.name.split('/')[0]!='policy_estimator' and v.name.split('/')[0]!='value_estimator']
@@ -525,7 +545,7 @@ saver = tf.train.Saver(variables)
 
 with tf.Session() as sess:
     try:
-        saver.restore(sess, "tmp/model9.ckpt")
+        saver.restore(sess, "tmp/model10.ckpt")
         sess.run(tf.initializers.variables(variables_to_init))
         print("Restoring parameters")
     except ValueError:
@@ -534,14 +554,14 @@ with tf.Session() as sess:
 
     stats = actor_critic(env, policy_estimator_X, value_estimator_X, trainer_X, 10000, discount_factor=0.99, player2=True, positiveRewardFactor=1, negativeRewardFactor=1, batch_size=batch_size)
 
-    filters = sess.run(conv_net_X.filter1)
+    #filters = sess.run(conv_net_X.filter1)
 
-    save_path = saver.save(sess, "tmp/model9.ckpt")
+    save_path = saver.save(sess, "tmp/model10.ckpt")
     print("Saving parameters")
 
 end = time()
 
 print("It took:", end-start, "seconds to do 5.000 games")
 
-plotting.plot_episode_stats(stats, filters, smoothing_window=100)
+plotting.plot_episode_stats(stats, smoothing_window=100)
 
